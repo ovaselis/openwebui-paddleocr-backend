@@ -138,13 +138,22 @@ async def _ocr_pdf(pdf_path: Path) -> tuple[list[OCRPage], list[str]]:
 
     try:
         total_pages = doc.page_count
-        pages_to_process = min(total_pages, settings.max_pdf_pages)
 
-        if total_pages > settings.max_pdf_pages:
-            warnings.append(
-                f"PDF has {total_pages} pages, but only first {settings.max_pdf_pages} page(s) were processed."
+        if total_pages == 0:
+            raise HTTPException(
+                status_code=400,
+                detail="PDF file does not contain any pages.",
             )
 
+        if settings.max_pdf_pages <= 0:
+            pages_to_process = total_pages
+        else:
+            pages_to_process = min(total_pages, settings.max_pdf_pages)
+
+            if total_pages > settings.max_pdf_pages:
+                warnings.append(
+                    f"PDF has {total_pages} pages, but only first {settings.max_pdf_pages} page(s) were processed."
+                )
         zoom = settings.pdf_dpi / 72
         matrix = fitz.Matrix(zoom, zoom)
 
