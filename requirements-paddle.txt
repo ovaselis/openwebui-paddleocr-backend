@@ -1,0 +1,4 @@
+# Install after the base backend works.
+# CPU install is easiest for first local testing:
+paddlepaddle>=3.0.0
+paddleocr[all]>=3.0.0
