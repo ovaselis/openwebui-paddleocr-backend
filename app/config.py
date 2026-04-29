@@ -7,11 +7,20 @@ class Settings(BaseSettings):
     api_key: str = Field(default="local-test-key-123", alias="OCR_API_KEY")
     ocr_engine: str = Field(default="mock", alias="OCR_ENGINE")
     ocr_lang: str = Field(default="latin", alias="OCR_LANG")
+    ocr_device: str = Field(default="cpu", alias="OCR_DEVICE")
+    ocr_detection_model: str = Field(default="", alias="OCR_DETECTION_MODEL")
+    ocr_recognition_model: str = Field(default="", alias="OCR_RECOGNITION_MODEL")
+
     max_file_size_mb: int = Field(default=25, alias="MAX_FILE_SIZE_MB")
     max_pdf_pages: int = Field(default=3, alias="MAX_PDF_PAGES")
     pdf_dpi: int = Field(default=200, alias="PDF_DPI")
     pdf_native_text_first: bool = Field(default=True, alias="PDF_NATIVE_TEXT_FIRST")
     pdf_native_min_chars: int = Field(default=80, alias="PDF_NATIVE_MIN_CHARS")
+    ocr_cache_enabled: bool = Field(default=True, alias="OCR_CACHE_ENABLED")
+    ocr_cache_path: Path = Field(
+        default=Path("data/cache/ocr_cache.sqlite3"),
+        alias="OCR_CACHE_PATH",
+    )
     log_level: str = Field(default="INFO", alias="LOG_LEVEL")
 
     data_dir: Path = Path("data")

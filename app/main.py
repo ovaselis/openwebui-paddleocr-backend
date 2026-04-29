@@ -10,6 +10,7 @@ from fastapi import Depends, FastAPI, File, HTTPException, UploadFile, status
 from PIL import Image, UnidentifiedImageError
 
 from app.auth import require_api_key
+from app.cache import build_cache_key, get_cached_response, save_cached_response, sha256_file
 from app.config import settings
 from app.schemas import HealthResponse, OCRPage, OCRResponse
 from app.ocr import get_engine
@@ -63,6 +64,20 @@ async def ocr_file(file: UploadFile = File(...)) -> OCRResponse:
     logger.info("Received OCR request: filename=%s saved=%s", original_name, saved_path)
 
     try:
+        file_hash = sha256_file(saved_path)
+        cache_key = build_cache_key(file_hash)
+
+        cached_response = get_cached_response(cache_key)
+        if cached_response is not None:
+            logger.info("Returning cached OCR result for filename=%s", original_name)
+            cached_response["filename"] = original_name
+
+            warnings = cached_response.get("warnings") or []
+            warnings.append("Returned cached OCR result; file was not processed again.")
+            cached_response["warnings"] = warnings
+
+            return OCRResponse(**cached_response)
+
         if suffix == ".pdf":
             file_type = "pdf"
             pages, warnings = await _ocr_pdf(saved_path)
@@ -85,7 +100,7 @@ async def ocr_file(file: UploadFile = File(...)) -> OCRResponse:
         if not combined_text:
             warnings.append("OCR completed, but no text was detected.")
 
-        return OCRResponse(
+        response = OCRResponse(
             filename=original_name,
             file_type=file_type,
             engine=get_engine().name,
@@ -95,6 +110,23 @@ async def ocr_file(file: UploadFile = File(...)) -> OCRResponse:
             pages=pages,
             warnings=warnings,
         )
+
+        response_data = (
+            response.model_dump()
+            if hasattr(response, "model_dump")
+            else response.dict()
+        )
+
+        try:
+            save_cached_response(
+                cache_key=cache_key,
+                file_hash=file_hash,
+                response_data=response_data,
+            )
+        except Exception:
+            logger.warning("Failed to save OCR cache for %s", original_name, exc_info=True)
+
+        return response
 
     except HTTPException:
         raise
