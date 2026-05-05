@@ -15,6 +15,8 @@ from app.config import settings
 from app.schemas import HealthResponse, OCRPage, OCRResponse
 from app.ocr import get_engine
 
+
+#logger configuration
 logger = logging.getLogger("paddleocr_backend")
 
 logging.basicConfig(
@@ -22,19 +24,22 @@ logging.basicConfig(
     format="%(levelname)s:%(name)s:%(message)s",
 )
 
+
+#creates FastAPI app
 app = FastAPI(
     title="OpenWebUI PaddleOCR Backend",
     description="OCR and document text extraction backend for Open WebUI.",
     version="0.1.0",
 )
 
-
+#when backend starts
 @app.on_event("startup")
 async def startup_event() -> None:
-    settings.upload_dir.mkdir(parents=True, exist_ok=True)
+    settings.upload_dir.mkdir(parents=True, exist_ok=True) #creates a upload directory for the uploaded images
     logger.info("OCR backend started with engine=%s", settings.ocr_engine)
 
 
+#GET /health endpoint, returns base config of the ocr backend
 @app.get("/health", response_model=HealthResponse)
 async def health() -> HealthResponse:
     return HealthResponse(
@@ -45,13 +50,13 @@ async def health() -> HealthResponse:
         max_pdf_pages=settings.max_pdf_pages,
     )
 
-
-@app.post("/ocr", response_model=OCRResponse, dependencies=[Depends(require_api_key)])
+#POST /ocr endpoint, 
+@app.post("/ocr", response_model=OCRResponse, dependencies=[Depends(require_api_key)]) #checks API key
 async def ocr_file(file: UploadFile = File(...)) -> OCRResponse:
-    original_name = file.filename or "uploaded-file"
-    suffix = Path(original_name).suffix.lower()
+    original_name = file.filename or "uploaded-file" #file upload name
+    suffix = Path(original_name).suffix.lower() #gets the .extention (".pdf", ".png", ...)
 
-    if suffix not in settings.allowed_extensions:
+    if suffix not in settings.allowed_extensions: #checks if file type is allowed
         raise HTTPException(
             status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
             detail=(
@@ -60,15 +65,15 @@ async def ocr_file(file: UploadFile = File(...)) -> OCRResponse:
             ),
         )
 
-    saved_path = await _save_upload(file, suffix)
+    saved_path = await _save_upload(file, suffix) #saves uploaded file in temporary dir
     logger.info("Received OCR request: filename=%s saved=%s", original_name, saved_path)
 
     try:
-        file_hash = sha256_file(saved_path)
-        cache_key = build_cache_key(file_hash)
+        file_hash = sha256_file(saved_path) #saves uploaded files hash
+        cache_key = build_cache_key(file_hash) # saves cache key, including file hash and ocr config
 
-        cached_response = get_cached_response(cache_key)
-        if cached_response is not None:
+        cached_response = get_cached_response(cache_key) 
+        if cached_response is not None: #checks if file has been processed before
             logger.info("Returning cached OCR result for filename=%s", original_name)
             cached_response["filename"] = original_name
 
@@ -76,7 +81,7 @@ async def ocr_file(file: UploadFile = File(...)) -> OCRResponse:
             warnings.append("Returned cached OCR result; file was not processed again.")
             cached_response["warnings"] = warnings
 
-            return OCRResponse(**cached_response)
+            return OCRResponse(**cached_response) 
 
         if suffix == ".pdf":
             file_type = "pdf"
@@ -93,14 +98,14 @@ async def ocr_file(file: UploadFile = File(...)) -> OCRResponse:
             pages = [OCRPage(page=1, text=text, confidence=confidence)]
             warnings = []
 
-        combined_text = "\n\n".join(
+        combined_text = "\n\n".join( #joins all pages together in one text
             f"## Page {page.page}\n\n{page.text}" for page in pages
         ).strip()
 
-        if not combined_text:
+        if not combined_text: #if the full text is empty throws warning
             warnings.append("OCR completed, but no text was detected.")
 
-        response = OCRResponse(
+        response = OCRResponse( # makes the json ocr response
             filename=original_name,
             file_type=file_type,
             engine=get_engine().name,
