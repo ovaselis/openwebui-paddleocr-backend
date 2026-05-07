@@ -1,7 +1,6 @@
 """FastAPI entry point for the OCR backend.
 
 This file only defines HTTP endpoints and request-level error handling.
-The actual OCR logic is delegated to service and extractor modules.
 """
 
 import logging
@@ -89,4 +88,4 @@ async def ocr_file(file: UploadFile = File(...)) -> OCRResponse:
             saved_path.unlink(missing_ok=True)
         except Exception:
             logger.warning("Could not remove uploaded file: %s", saved_path)
-            logger.warning("Could not remove uploaded file: %s", saved_path)
+

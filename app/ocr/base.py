@@ -1,7 +1,7 @@
 from pathlib import Path
 from typing import Protocol
 
-
+#defines the common “shape” every OCR engine must have
 class OCREngine(Protocol):
     name: str
 

@@ -1,5 +1,6 @@
 from pydantic import BaseModel, Field
 
+#defines JSON responses
 
 class HealthResponse(BaseModel):
     status: str = "ok"
@@ -23,4 +24,4 @@ class OCRResponse(BaseModel):
     page_count: int
     text: str
     pages: list[OCRPage]
-    warnings: list[str] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list) #every response creates a new list

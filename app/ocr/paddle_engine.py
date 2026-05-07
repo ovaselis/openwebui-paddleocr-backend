@@ -24,23 +24,28 @@ class PaddleOCREngine:
                 ) from exc
 
             logger.info(
-                "Loading PaddleOCR model with lang=%s on GPU",
+                "Loading PaddleOCR model with lang=%s device=%s detection_model=%s recognition_model=%s",
                 settings.ocr_lang,
+                settings.ocr_device,
+                settings.ocr_detection_model or "default",
+                settings.ocr_recognition_model or "default",
             )
 
-            self._ocr = PaddleOCR(
-                lang=settings.ocr_lang,
-                device="gpu:0",
+            ocr_kwargs = {
+                "lang": settings.ocr_lang,
+                "device": settings.ocr_device,
+                "use_doc_orientation_classify": False,
+                "use_doc_unwarping": False,
+                "use_textline_orientation": False,
+            }
 
-                # Laptop-friendly models for 8 GB VRAM.
-                text_detection_model_name="PP-OCRv5_mobile_det",
-                text_recognition_model_name="latin_PP-OCRv5_mobile_rec",
+            if settings.ocr_detection_model:
+                ocr_kwargs["text_detection_model_name"] = settings.ocr_detection_model
 
-                # Disable extra preprocessing for MVP.
-                use_doc_orientation_classify=False,
-                use_doc_unwarping=False,
-                use_textline_orientation=False,
-            )
+            if settings.ocr_recognition_model:
+                ocr_kwargs["text_recognition_model_name"] = settings.ocr_recognition_model
+
+            self._ocr = PaddleOCR(**ocr_kwargs)
 
         return self._ocr
 

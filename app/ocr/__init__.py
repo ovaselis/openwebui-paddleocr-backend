@@ -1,31 +1,34 @@
-from typing import Any
+import logging
 
 from app.config import settings
+from app.ocr.base import OCREngine
+from app.ocr.mock_engine import MockOCREngine
+from app.ocr.paddle_engine import PaddleOCREngine
 
-_engine: Any | None = None
+# Logger for the ocr module
+logger = logging.getLogger(__name__)
 
+_engine: OCREngine | None = None #variable to store the engine
 
-def get_engine() -> Any:
+def get_engine() -> OCREngine:
     global _engine
 
     if _engine is not None:
-        return _engine
+        return _engine #uses the defined variable
 
-    engine_name = settings.ocr_engine.lower().strip()
+    engine_name = settings.ocr_engine.lower().strip() #gets engine name from config
 
+    logger.info("Initializing OCR engine: %s", engine_name)
+
+    #starts an engine based on the name
     if engine_name == "mock":
-        from app.ocr.mock_engine import MockOCREngine
-
         _engine = MockOCREngine()
-        return _engine
-
-    if engine_name == "paddleocr":
-        from app.ocr.paddle_engine import PaddleOCREngine
-
+    elif engine_name in {"paddle", "paddleocr"}:
         _engine = PaddleOCREngine()
-        return _engine
+    else:
+        raise ValueError(f"Unsupported OCR engine: {settings.ocr_engine}")
 
-    raise RuntimeError(
-        f"Unsupported OCR_ENGINE='{settings.ocr_engine}'. "
-        "Supported engines: mock, paddleocr."
-    )
+    return _engine
+
+
+__all__ = ["get_engine"]

@@ -2,153 +2,255 @@
 
 FastAPI OCR backend for Open WebUI using PaddleOCR.
 
-This project is built for an Open WebUI custom OCR tool. The tool sends uploaded files to this backend, and the backend returns extracted text.
+This project provides a reusable OCR API that extracts text from images, PDF files, and DOCX documents. It is intended to be used together with an Open WebUI custom tool.
 
 ## Features
 
-- Image OCR with PaddleOCR
+- FastAPI OCR backend
+- Open WebUI custom tool integration
+- API key authentication with `X-API-Key`
+- PNG, JPG, JPEG, WEBP, BMP, TIFF/TIF image OCR
 - PDF native text extraction
-- OCR fallback for scanned PDF pages
-- DOCX paragraph and table extraction
+- PDF OCR fallback for scanned or image-based pages
+- DOCX paragraph extraction
+- DOCX table extraction
 - OCR for images embedded inside DOCX files
-- SQLite cache to avoid re-processing the same file
-- API key protection with `X-API-Key`
-- Structured JSON output
+- SQLite OCR result cache
+- English and Latvian OCR test samples
+- Structured JSON response with extracted text, pages, confidence and warnings
 - Basic logging and error handling
-- Azure deployment plan
 
-## Supported Files
+## Supported File Types
 
-Direct backend uploads:
+| File type | Status | Processing |
+|---|---:|---|
+| PNG | Supported | Direct image OCR with PaddleOCR |
+| JPG/JPEG | Supported | Direct image OCR with PaddleOCR |
+| WEBP | Supported by tool/backend image pipeline | Direct image OCR if enabled in backend allowed extensions |
+| BMP | Supported by tool/backend image pipeline | Direct image OCR if enabled in backend allowed extensions |
+| TIFF/TIF | Supported by tool/backend image pipeline | Direct image OCR if enabled in backend allowed extensions |
+| PDF | Supported | Native text extraction first, OCR fallback if needed |
+| DOCX | Supported | Native text/tables + OCR for embedded images |
 
-| Type | Processing |
-|---|---|
-| PNG | PaddleOCR image OCR |
-| JPG/JPEG | PaddleOCR image OCR |
-| PDF | Native text first, OCR fallback if needed |
-| DOCX | Native text/tables + embedded image OCR |
-
-The Open WebUI tool also detects `WEBP`, `BMP`, `TIFF` and `TIF` images. To accept these as direct backend uploads, the same extensions must also be enabled in the backend configuration.
-DOCX embedded images are extracted from `word/media/` and OCR is applied to supported image formats.
+DOCX embedded images are extracted from the internal `word/media/` folder and OCR is applied to supported image formats.
 
 ## How Processing Works
 
 ### Images
 
-The backend validates the image and sends it directly to PaddleOCR.
+Image files are validated first. If the file is valid, it is sent directly to PaddleOCR. The backend returns one page result with extracted text and OCR confidence.
 
 ### PDFs
 
-Each PDF page is processed separately:
+PDF files are processed page by page.
 
-1. Try native/selectable PDF text extraction.
-2. If native text is good enough, use it.
-3. If native text is missing or too short, render the page as an image.
-4. Run OCR on the rendered page.
+1. The backend first tries to extract native/selectable PDF text.
+2. If a page contains enough native text, OCR is skipped for that page.
+3. If a page has little or no native text, the page is rendered as an image.
+4. The rendered page image is processed with PaddleOCR.
 
-This makes normal digital PDFs faster and scanned PDFs still usable.
+This makes digital PDFs faster and scanned PDFs still usable.
 
 ### DOCX
 
-DOCX processing extracts:
+DOCX files are processed in three parts:
 
-1. normal paragraphs,
-2. native tables,
-3. embedded images from `word/media/`, which are then OCR-processed.
+1. Native paragraphs are extracted.
+2. Native tables are extracted.
+3. Embedded images are extracted from `word/media/` and processed with OCR.
 
-### Cache
+This allows the backend to handle DOCX files that contain both editable text and image-based text.
 
-SQLite stores successful OCR results. If the same file is uploaded again with the same OCR settings, the cached result is returned.
+### SQLite Cache
+
+The backend stores successful OCR results in SQLite.
+
+The cache key includes the file hash and OCR configuration. If the same file is uploaded again with the same OCR settings, the cached result is returned instead of processing the file again.
 
 ## Project Structure
 
 ```text
 app/
   main.py                    FastAPI endpoints
-  auth.py                    API key check
-  cache.py                   SQLite cache
+  auth.py                    API key authentication
+  cache.py                   SQLite OCR cache
   config.py                  environment settings
   schemas.py                 response models
 
   services/
-    file_service.py          upload saving and extension validation
-    ocr_service.py           cache lookup, routing, response building
+    file_service.py          upload saving and file validation
+    ocr_service.py           cache lookup, routing and response creation
 
   extractors/
-    image_extractor.py       image OCR
-    pdf_extractor.py         PDF native extraction + OCR fallback
-    docx_extractor.py        DOCX text/tables/images
+    image_extractor.py       image validation and OCR
+    pdf_extractor.py         PDF native extraction and OCR fallback
+    docx_extractor.py        DOCX text, tables and embedded image OCR
 
   ocr/
+    __init__.py              OCR engine loader
     paddle_engine.py         PaddleOCR integration
-    mock_engine.py           mock engine for testing
+    mock_engine.py           mock OCR engine
 
 tools/
   openwebui_ocr_tool.py      Open WebUI custom tool code
 
 scripts/
-  create_sample_files.py     creates test samples
+  create_sample_files.py     generates test samples
+
+tests/
+  test_validation.py
 ```
 
-## Environment Variables
+## Local Setup
 
-Backend `.env` example:
+Clone the repository:
+
+```bash
+git clone https://github.com/ovaselis/openwebui-paddleocr-backend.git
+cd openwebui-paddleocr-backend
+```
+
+Create and activate a virtual environment:
+
+```bash
+python3 -m venv ~/venvs/paddleocr-backend
+source ~/venvs/paddleocr-backend/bin/activate
+```
+
+Install dependencies:
+
+```bash
+pip install -r requirements.txt
+pip install -r requirements-paddle.txt
+```
+
+Create `.env`:
+
+```bash
+cp .env.example .env
+nano .env
+```
+
+Example local configuration:
 
 ```env
 OCR_API_KEY=change-this-secret
 OCR_ENGINE=paddleocr
 OCR_LANG=lv
-OCR_DEVICE=cpu
-
+OCR_DEVICE=gpu:0
 OCR_DETECTION_MODEL=PP-OCRv5_mobile_det
 OCR_RECOGNITION_MODEL=latin_PP-OCRv5_mobile_rec
-
 MAX_FILE_SIZE_MB=10
-MAX_PDF_PAGES=10
-PDF_DPI=150
+MAX_PDF_PAGES=0
+PDF_DPI=200
 PDF_NATIVE_TEXT_FIRST=true
 PDF_NATIVE_MIN_CHARS=80
-
 OCR_CACHE_ENABLED=true
 OCR_CACHE_PATH=data/cache/ocr_cache.sqlite3
-
 LOG_LEVEL=INFO
 ```
 
-## Open WebUI Tool Setup
+Start the backend:
 
-Tool file:
+```bash
+python -m uvicorn app.main:app --host 0.0.0.0 --port 9713 --env-file .env
+```
+
+Health check:
+
+```bash
+curl http://127.0.0.1:9713/health
+```
+
+## API Usage
+
+Set API key:
+
+```bash
+API_KEY=$(grep '^OCR_API_KEY=' .env | cut -d= -f2- | tr -d '\r')
+```
+
+Send a file:
+
+```bash
+curl --max-time 600 -X POST "http://127.0.0.1:9713/ocr" \
+  -H "X-API-Key: $API_KEY" \
+  -F "file=@samples/pdf/latvian_mixed_test.pdf"
+```
+
+Example response fields:
+
+| Field | Description |
+|---|---|
+| `filename` | Original file name |
+| `file_type` | `image`, `pdf`, or `docx` |
+| `engine` | OCR engine |
+| `language` | OCR language setting |
+| `page_count` | Number of returned pages |
+| `text` | Combined extracted text |
+| `pages` | Page-level results |
+| `confidence` | OCR confidence when available |
+| `warnings` | Processing notes, fallback/cache messages |
+
+## Open WebUI Tool
+
+The Open WebUI custom tool code is stored in:
 
 ```text
 tools/openwebui_ocr_tool.py
 ```
 
-Recommended Azure tool valves:
+Local tool settings:
 
 ```text
-OCR_API_URL=https://<azure-container-app-url>/ocr
-OCR_API_KEY=<production OCR_API_KEY>
-REQUEST_TIMEOUT_SECONDS=300
+OCR_API_URL=http://host.docker.internal:9713/ocr
+OCR_API_KEY=<same value as backend OCR_API_KEY>
+REQUEST_TIMEOUT_SECONDS=180
 OPENWEBUI_UPLOADS_DIR=/app/backend/data/uploads
-DEBUG_MODE=false
 ```
 
-The tool:
+For Azure:
 
-1. finds the uploaded file in Open WebUI,
-2. sends it to the backend `/ocr` endpoint,
-3. adds the `X-API-Key` header,
-4. reads the backend JSON response,
-5. returns the extracted `text` field to the chat.
+```text
+OCR_API_URL=https://<your-azure-backend-domain>/ocr
+OCR_API_KEY=<production-secret>
+REQUEST_TIMEOUT_SECONDS=300
+```
 
+The tool should:
+
+1. find the uploaded file in Open WebUI,
+2. send it to the backend `/ocr` endpoint,
+3. include `X-API-Key`,
+4. read the JSON response,
+5. return the extracted `text` field to the chat.
+
+Do not commit real API keys in the tool code. Use placeholders or Open WebUI valves/settings.
 
 ## Azure Deployment
 
-Recommended target: **Azure Container Apps**.
+Recommended first Azure target: **Azure Container Apps**.
 
-Azure Container Apps is suitable here because the backend is a containerized HTTP API. `az containerapp up` can build from source, push the image to a registry and deploy the app.
+For an Azure Free Trial or CPU deployment, use conservative settings:
 
-### 1. Add Dockerfile
+```env
+OCR_API_KEY=<production-secret>
+OCR_ENGINE=paddleocr
+OCR_LANG=lv
+OCR_DEVICE=cpu
+MAX_FILE_SIZE_MB=10
+MAX_PDF_PAGES=10
+PDF_DPI=150
+PDF_NATIVE_TEXT_FIRST=true
+PDF_NATIVE_MIN_CHARS=80
+OCR_CACHE_ENABLED=true
+OCR_CACHE_PATH=data/cache/ocr_cache.sqlite3
+LOG_LEVEL=INFO
+```
+
+Digital PDFs and DOCX files should be reasonably fast because native extraction is used where possible. Scanned PDFs and image OCR are slower on CPU.
+
+### 1. Add a Dockerfile
 
 Create `Dockerfile` in the repository root:
 
@@ -170,9 +272,9 @@ EXPOSE 9713
 CMD ["python", "-m", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "9713"]
 ```
 
-If PaddleOCR needs extra Linux libraries in Azure, add them to this Dockerfile later.
+If PaddleOCR needs extra system libraries, add them to the image later.
 
-### 2. Login and prepare Azure CLI
+### 2. Login to Azure
 
 ```bash
 az login
@@ -180,7 +282,15 @@ az account set --subscription "<subscription-id>"
 az extension add --name containerapp --upgrade
 ```
 
-### 3. Deploy from repository source
+### 3. Create resource group
+
+```bash
+az group create \
+  --name rg-openwebui-ocr \
+  --location northeurope
+```
+
+### 4. Deploy to Azure Container Apps
 
 From the repository root:
 
@@ -189,14 +299,10 @@ az containerapp up \
   --name openwebui-paddleocr-backend \
   --resource-group rg-openwebui-ocr \
   --location northeurope \
-  --source . \
-  --ingress external \
-  --target-port 9713
+  --source .
 ```
 
-The command outputs the Container App URL.
-
-### 4. Configure backend environment variables
+### 5. Configure environment variables
 
 ```bash
 az containerapp update \
@@ -207,8 +313,6 @@ az containerapp update \
     OCR_ENGINE="paddleocr" \
     OCR_LANG="lv" \
     OCR_DEVICE="cpu" \
-    OCR_DETECTION_MODEL="PP-OCRv5_mobile_det" \
-    OCR_RECOGNITION_MODEL="latin_PP-OCRv5_mobile_rec" \
     MAX_FILE_SIZE_MB="10" \
     MAX_PDF_PAGES="10" \
     PDF_DPI="150" \
@@ -219,41 +323,49 @@ az containerapp update \
     LOG_LEVEL="INFO"
 ```
 
-### 5. Test Azure backend
+### 6. Test Azure backend
 
 ```bash
-curl https://<azure-container-app-url>/health
+curl https://<your-container-app-url>/health
 ```
 
 OCR test:
 
 ```bash
-curl --max-time 600 -X POST "https://<azure-container-app-url>/ocr" \
+curl --max-time 600 -X POST "https://<your-container-app-url>/ocr" \
   -H "X-API-Key: <production-secret>" \
   -F "file=@samples/pdf/latvian_mixed_test.pdf"
 ```
 
-### 6. Connect Open WebUI to Azure backend
+### Azure Notes
 
-In the Open WebUI tool valves:
+For a first deployment, SQLite inside the container is acceptable for testing.
 
-```text
-OCR_API_URL=https://<azure-container-app-url>/ocr
-OCR_API_KEY=<same production secret>
-REQUEST_TIMEOUT_SECONDS=300
-```
+For production, consider:
 
-Then upload a file in Open WebUI and call the OCR tool.
+- persistent storage for cache,
+- Azure Files or Blob Storage,
+- managed database if multiple replicas are used,
+- stricter file size and page limits,
+- GPU-capable infrastructure for large scanned-document OCR.
 
 ## Testing
 
-Generate test samples:
+Generate samples:
 
 ```bash
 python scripts/create_sample_files.py
 ```
 
-Main tests:
+Generated samples:
+
+```text
+samples/images/
+samples/pdf/
+samples/docx/
+```
+
+Test commands:
 
 ```bash
 curl --max-time 600 -X POST "http://127.0.0.1:9713/ocr" \
@@ -269,11 +381,11 @@ curl --max-time 600 -X POST "http://127.0.0.1:9713/ocr" \
   -F "file=@samples/docx/latvian_docx_embedded_image_test.docx"
 ```
 
-Tested:
+Tested coverage:
 
 | Test | Status |
 |---|---:|
-| Image OCR | Passed |
+| PNG/JPG OCR | Passed |
 | English OCR | Passed |
 | Latvian OCR | Passed |
 | PDF native extraction | Passed |
@@ -283,10 +395,74 @@ Tested:
 | DOCX embedded image OCR | Passed |
 | SQLite cache | Passed |
 
+## Functional Requirements Coverage
+
+| Requirement | Status | Implementation |
+|---|---:|---|
+| FR-1 Open WebUI Integration | Done | Open WebUI custom tool calls FastAPI backend |
+| FR-2 OCR Input Support | Done | Image OCR supported |
+| FR-3 PDF Support | Done | Native extraction + OCR fallback |
+| FR-4 OCR Backend Connection | Done | `/ocr` API endpoint |
+| FR-5 Text Extraction Output | Done | Page-separated readable text |
+| FR-6 Structured Output | Done | JSON with pages, confidence and warnings |
+| FR-7 File Validation | Done | Extension and file validation |
+| FR-8 Error Handling | Done | Clear HTTP errors and warnings |
+| FR-9 Environment Configuration | Done | `.env` and `.env.example` |
+| FR-10 Logging | Done | Startup, request, cache and error logs |
+
+## Security Notes
+
+- `/ocr` requires `X-API-Key`.
+- `.env` is not committed.
+- File size is limited.
+- File types are validated.
+- Temporary uploads are deleted.
+- SQLite cache can contain extracted document text and should be protected.
+- Production should use HTTPS.
+- Do not expose the backend publicly without authentication.
+- Do not commit real API keys.
+
+## Demo Evidence Checklist
+
+Recommended evidence for final submission:
+
+- GitHub repository screenshot
+- `/health` endpoint screenshot
+- image OCR test screenshot
+- PDF native text + OCR fallback screenshot
+- DOCX embedded image OCR screenshot
+- SQLite cache warning screenshot
+- Open WebUI tool configuration screenshot
+- Open WebUI chat result screenshot
+
 ## Limitations
 
-- OCR quality depends on source image quality.
-- CPU deployment is slower for scanned PDFs and images.
-- OCR tables from images are returned as text, not spreadsheets.
-- SQLite cache is fine for local/small deployments, but production multi-replica deployment should use persistent/shared storage.
-- Current `/ocr` processing is synchronous.
+- OCR quality depends on image quality.
+- CPU deployment can be slow for scanned PDFs and large images.
+- OCR tables from images are returned as text, not structured spreadsheets.
+- SQLite cache is suitable for local and small deployments.
+- Multi-instance production deployment needs shared cache storage or another database.
+- The `/ocr` endpoint processes requests synchronously.
+
+## Do Not Commit
+
+```text
+.env
+data/
+outputs/
+.venv/
+__pycache__/
+```
+
+## Important Repository Files
+
+```text
+README.md
+.env.example
+requirements.txt
+requirements-paddle.txt
+app/
+tools/openwebui_ocr_tool.py
+scripts/create_sample_files.py
+tests/
+```
