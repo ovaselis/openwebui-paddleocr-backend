@@ -25,7 +25,17 @@ class Settings(BaseSettings):
 
     data_dir: Path = Path("data")
     upload_dir: Path = Path("data/uploads")
-    allowed_extensions: set[str] = {".png", ".jpg", ".jpeg", ".pdf", ".docx"}
+    allowed_extensions: set[str] = {
+        ".png",
+        ".jpg",
+        ".jpeg",
+        ".webp",
+        ".bmp",
+        ".tif",
+        ".tiff",
+        ".pdf",
+        ".docx",
+    }
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
